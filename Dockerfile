@@ -1,10 +1,10 @@
 FROM debian:bookworm-slim
 
-# Set up correct archived repository sources
+# Set up archived apt sources and install dependencies
 RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y zip unzip curl && \
+    apt-get install -y zip unzip curl bash && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/*
 
@@ -14,24 +14,19 @@ ARG USER_NAME="jenkins"
 RUN useradd -m -U -u $USER_UID $USER_NAME
 
 USER $USER_UID
+ENV SDKMAN_DIR="/home/jenkins/.sdkman"
 
-# More resilient SDKMAN installation with retry
-RUN bash -c 'for i in {1..5}; do curl -sSf https://get.sdkman.io | bash && break || sleep 10; done'
+# Install SDKMAN directly into the user's home and make sure it's sourced in the same RUN layer
+RUN curl -s "https://get.sdkman.io" | bash && \
+    bash -c "source $SDKMAN_DIR/bin/sdkman-init.sh && \
+             yes | sdk install java 11.0.21-tem && \
+             yes | sdk install maven 3.9.6 && \
+             sdk flush archives && \
+             sdk flush temp"
 
-ARG JAVA_VERSION="11.0.21-tem"
-ARG MAVEN_VERSION="3.9.6"
-
-# Install Java and Maven via SDKMAN with retries built into the command chain
-RUN bash -c " \
-    source $HOME/.sdkman/bin/sdkman-init.sh && \
-    yes | sdk install java $JAVA_VERSION && \
-    yes | sdk install maven $MAVEN_VERSION && \
-    sdk flush archives && \
-    sdk flush temp"
-
+# Make sure the environment variables are available globally
 ENV JAVA_HOME="/home/jenkins/.sdkman/candidates/java/current"
 ENV MAVEN_HOME="/home/jenkins/.sdkman/candidates/maven/current"
 ENV PATH="$JAVA_HOME/bin:$MAVEN_HOME/bin:$PATH"
 
-# Default command to keep the container running
 CMD ["bash"]
