@@ -1,34 +1,47 @@
 pipeline {
-    agent any
-
-    tools {
-        maven 'Maven 3.8.1' // This must match Jenkins' Maven tool name
-        jdk 'Java 11'       // Match your installed JDK name in Jenkins
-    }
+    agent none
 
     stages {
-        stage('Checkout') {
-            steps {
-                git url: 'https://github.com/hninpwintcho/jenkine-pipeline-maven-demo.git'
-            }
-        }
+        stage("Build & Test") {
+            matrix {
+                agent {
+                    dockerfile {
+                        label "docker"
 
-        stage('Build') {
-            steps {
-                sh 'mvn clean package'
-            }
-        }
+                        additionalBuildArgs """
+                            --build-arg JAVA_VERSION=$JAVA \
+                            --build-arg MAVEN_VERSION=$MAVEN \
+                            --build-arg USER_UID=\$(id -u) \
+                            -t mymaven:${MAVEN}-jdk-${JAVA}
+                        """.stripIndent().trim()
 
-        stage('Test') {
-            steps {
-                sh 'mvn test'
+                        args "-v /tmp/maven:/home/jenkins/.m2"
+                    }
+                }
+                axes {
+                    axis {
+                        name "JAVA"
+                        values "11.0.7-amzn", "8.0.252-open", "15.ea.26-open"
+                    }
+                    axis {
+                        name "MAVEN"
+                        values "3.6.3"
+                    }
+                }
+                stages {
+                    stage("Build") {
+                        steps {
+                            sh "mvn -version"
+                            sh "mvn -DskipTests clean package"
+                        }
+                    }
+                    stage("Test") {
+                        steps {
+                            sh "mvn test -P coverage"
+                        }
+                    }
+                }
             }
-        }
-    }
-
-    post {
-        always {
-            junit '**/target/surefire-reports/*.xml'
         }
     }
 }
